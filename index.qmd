@@ -210,7 +210,7 @@ code. Working through it produced several things worth recording:
 
 ---
 
-## Keeping performance honest
+## Catching performance regressions in CI
 
 Graph construction is the slow part of the pipeline, and nothing was watching it
 for regressions. I opened
@@ -236,7 +236,7 @@ The check is informational rather than blocking, and reports peak memory
 alongside runtime. The threshold is deliberately set very low (0.1%) so that it
 can be raised against real observed noise rather than guessed at up front.
 
-### Phase 2: measuring the noise instead of guessing at it
+### Phase 2: repeated timings and the median
 
 [PR #150](https://github.com/mllam/weather-model-graphs/pull/150) is the second
 half. A single timing sample per grid size turned out to be noisy enough that
@@ -300,7 +300,7 @@ follow, depending on which arguments you give:
 The numbers above can be reproduced with `python verify_measurements.py`, which
 needs only `networkx` and `numpy`.
 
-### The bug underneath the bug
+### What the fix uncovered
 
 Fixing the scaling exposed a second, quieter problem.
 
@@ -390,37 +390,41 @@ density-adaptive meshes and adaptive mesh refinement. The layout abstraction fro
 
 ## What I learned
 
-**Measure before claiming.** The most useful sentences I wrote in review were the
-ones a mentor could reproduce. When asked whether a removed test was safe to
-delete, "the validator covers it" is an opinion; corrupting a graph six ways and
-showing the validator catches each is an answer.
+Two of the bugs I ran into this summer had the same shape, and I did not notice
+that until fairly late.
 
-**Tests that check size do not check shape.** The disconnected-components bug
-survived a full test suite because every count was correct. The graph had the
-right number of nodes and edges and the wrong topology entirely.
+The disconnected-components bug got through a full test suite because every
+number it checked was correct. The graph had the expected node count and the
+expected edge count. It was still three separate pieces where it should have been
+one, and the tests had no opinion about that at all. The benchmark turned out to
+have a version of the same problem: memory tracking was running during the timed
+section, so the runtimes we had been reporting included the cost of measuring
+them. Taking `tracemalloc` out of the timed path dropped the largest grid size
+from about 17.5 seconds to about 3.6. In both cases the thing that was supposed to
+tell me something was wrong was itself the thing that was wrong, and it reported
+success the whole time.
 
-**A fix that is pushed is not a fix that is communicated.** I pushed the
-equilateral-triangle fix hours before a meeting where the same problem came up
-from a stale notebook. The code was already right. I had not said so, which meant
-it may as well not have been.
+I was also straightforwardly wrong in review on more than one occasion. On #711 a
+reviewer raised two problems that I initially argued were not problems. They both
+were. The more serious one was that the way I was storing the graph object meant
+it never moved to the GPU with the rest of the model, so training would have
+silently used a stale copy left on the CPU. I would have shipped that. What stuck
+with me is less the specific bug than what it cost to be talked out of it, and
+that noticing when a reviewer restates a point is usually cheaper than defending
+the first answer.
 
-**Reviewers repeat themselves for a reason.** When a mentor writes "I still
-think", the previous answer did not land. Reading that as a signal rather than as
-a repetition saved a round trip more than once.
+The part of the work I was weakest at coming in was the design itself. Writing
+[#78](https://github.com/mllam/weather-model-graphs/issues/78) meant stating where
+the boundary between two concepts actually sat, in a form other people could
+disagree with, with no implementation yet to point at. My first attempt at that
+argument was closed and had to be rewritten, and the discussion that followed
+changed the design several more times. The version that shipped is not the version
+I proposed, and it is better for that.
 
-**Designing in the open is a separate skill from writing the code.** This is the
-part of the project I came in weakest at and improved at most. Writing
-[#78](https://github.com/mllam/weather-model-graphs/issues/78) forced me to say
-what the boundary between two concepts actually was, in a form other people could
-disagree with, before I had any implementation to hide behind. My first attempt at
-that argument was closed and needed rewriting. The discussion that followed
-changed the design again, several times, and the result was better than what I
-proposed.
-
-I started this project able to implement a design and finished it able to propose
-one, defend it, and be argued out of the parts that were wrong. Working on a
-codebase that real forecasting work depends on is what taught me the difference
-between code that runs and code that other people can build on.
+I came into this able to implement a design and came out able to propose one,
+argue for it, and give up the parts of it that were wrong. Working on a codebase
+that real forecasting work depends on is what taught me the difference between
+code that runs and code other people can build on.
 
 ---
 
