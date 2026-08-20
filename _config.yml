@@ -5,8 +5,6 @@ theme: jekyll-theme-primer
 title: Flexible Graph Construction for Neural Weather Prediction
 description: Google Summer of Code 2026 final report, MLLAM
 
-# Source files that are not part of the published page.
+# The Quarto copy of the report is source, not part of the published page.
 exclude:
   - index.qmd
-  - verify_measurements.py
-  - README.md.bak
