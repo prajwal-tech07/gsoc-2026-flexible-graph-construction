@@ -1,7 +1,12 @@
 <div align="center">
-  <img src="assets/gsoc-logo.png" alt="Google Summer of Code" height="44" />
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="assets/mllam-logo.png" alt="MLLAM" height="44" />
+  <a href="https://summerofcode.withgoogle.com/programs/2026/projects/1GFUKY85">
+    <img src="assets/gsoc-logo.png" alt="Google Summer of Code" height="80" />
+  </a>
+  <br />
+  <br />
+  <a href="https://github.com/mllam">
+    <img src="assets/mllam-logo.png" alt="MLLAM" height="96" />
+  </a>
 </div>
 
 # Flexible Graph Construction for Neural Weather Prediction
