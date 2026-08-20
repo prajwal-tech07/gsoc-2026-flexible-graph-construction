@@ -130,6 +130,30 @@ The practical effect is that by the time I wrote code, the hard decisions had
 already been argued out in public, and review was about implementation rather than
 about direction.
 
+### Reviewing, and unblocking other people's work
+
+The benchmarking work depended on
+[PR #140](https://github.com/mllam/weather-model-graphs/pull/140) by
+[@yuvraajnarula](https://github.com/yuvraajnarula), which added memory profiling
+and JSON output to the scaling benchmark. Two things came out of reviewing it.
+
+First, a scheduling problem. #140 and
+[#117](https://github.com/mllam/weather-model-graphs/pull/117) were both adding
+the same `tests/benchmarks/` directory from the same base commit, so whichever
+merged second would conflict, and #140 was effectively a superset of #117. I
+raised this on #144 and proposed resolving it rather than letting the two
+collide. The outcome was that #117 was closed and #140 replaced it on the v0.4.0
+roadmap.
+
+Second, a real bug. On review I found that `--output-plot-memory` produced no
+file at all: `output_path` was passed into both plot functions but never used,
+and the only `savefig` call targeted the runtime plot, so running with
+`--track-memory --output-plot-memory` wrote the memory plot on top of the runtime
+one. It was fixed before the PR merged.
+
+I also confirmed the JSON schema was what the CI check would consume before
+depending on it, which is the cheapest possible time to find out that it is not.
+
 ---
 
 ## Separating layout from connectivity
