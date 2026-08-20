@@ -257,8 +257,6 @@ Even on a square domain the longest edge was 36% longer than the shortest. On a
 wide domain it was nearly double, so the "equidistant neighbours" property the
 layout exists to provide was simply not there.
 
-![Triangular mesh with per-axis and uniform scaling](figures/triangular-equilateral.png)
-
 The fix is to scale by a **single factor in both directions**. Two behaviours
 follow, depending on which arguments you give:
 
@@ -267,13 +265,9 @@ follow, depending on which arguments you give:
   slightly outside it.
 - With `nx`/`ny`, the counts are fixed and the lattice is scaled to the largest
   size that still fits inside the domain, so edge length follows from the counts.
-  This is the case shown in the lower panel above, which is why it does not fill
-  the frame.
 
-Both panels are drawn with `ax.set_aspect(1)`. Without it the axes distort the
-picture independently of the mathematics, and the two cases cannot be compared
-honestly. The figure is reproducible with `python figures/make_figures.py`, which
-needs only `networkx`, `numpy` and `matplotlib`.
+The numbers above can be reproduced with `python verify_measurements.py`, which
+needs only `networkx` and `numpy`.
 
 ### The bug underneath the bug
 
@@ -407,5 +401,5 @@ reviews and for the surrounding work this project depended on.
 
 ---
 
-*Every figure and number in this report can be regenerated from this repository:
-`python figures/make_figures.py`.*
+*The measurements quoted in this report can be reproduced from this repository:
+`python verify_measurements.py`.*

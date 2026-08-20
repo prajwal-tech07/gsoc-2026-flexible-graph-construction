@@ -11,14 +11,11 @@ categories:
 format:
   html:
     toc: true
-    code-fold: true
-execute:
-  freeze: auto
 ---
 
 > Final report for my Google Summer of Code 2026 project with
 > [MLLAM](https://github.com/mllam), mentored by Hauke Schulz, Leif Denby and
-> Joel Oskarsson. Source and figures:
+> Joel Oskarsson. Source:
 > [prajwal-tech07/gsoc-2026-flexible-graph-construction](https://github.com/prajwal-tech07/gsoc-2026-flexible-graph-construction).
 
 ## Summary
@@ -266,32 +263,6 @@ Even on a square domain the longest edge was 36% longer than the shortest. On a
 wide domain it was nearly double, so the "equidistant neighbours" property the
 layout exists to provide was simply not there.
 
-```{python}
-#| label: fig-triangular
-#| fig-cap: "The same triangular lattice on a 200 x 60 domain, scaled per-axis (top) and uniformly (bottom). Both panels use `ax.set_aspect(1)`."
-#| code-summary: "Show the code that draws this"
-
-import sys
-sys.path.insert(0, "figures")
-from make_figures import raw_lattice, scale_per_axis, scale_uniform, edge_lengths, draw
-import matplotlib.pyplot as plt
-
-domain = (200.0, 60.0)
-graph, positions, span = raw_lattice(12, 12)
-old, new = scale_per_axis(positions, span, domain), scale_uniform(positions, span, domain)
-l_old, l_new = edge_lengths(graph, old), edge_lengths(graph, new)
-
-fig, axes = plt.subplots(2, 1, figsize=(9, 5))
-draw(axes[0], graph, old,
-     f"Per-axis scaling: edges {l_old.min():.2f} to {l_old.max():.2f} "
-     f"(max/min = {l_old.max() / l_old.min():.3f})")
-draw(axes[1], graph, new,
-     f"Uniform scaling: every edge {l_new.min():.2f} "
-     f"(max/min = {l_new.max() / l_new.min():.3f})")
-fig.tight_layout()
-plt.show()
-```
-
 The fix is to scale by a **single factor in both directions**. Two behaviours
 follow, depending on which arguments you give:
 
@@ -300,13 +271,9 @@ follow, depending on which arguments you give:
   slightly outside it.
 - With `nx`/`ny`, the counts are fixed and the lattice is scaled to the largest
   size that still fits inside the domain, so edge length follows from the counts.
-  This is the case shown in the lower panel above, which is why it does not fill
-  the frame.
 
-Both panels are drawn with `ax.set_aspect(1)`. Without it the axes distort the
-picture independently of the mathematics, and the two cases cannot be compared
-honestly. The figure is reproducible with `python figures/make_figures.py`, which
-needs only `networkx`, `numpy` and `matplotlib`.
+The numbers above can be reproduced with `python verify_measurements.py`, which
+needs only `networkx` and `numpy`.
 
 ### The bug underneath the bug
 
@@ -440,5 +407,5 @@ reviews and for the surrounding work this project depended on.
 
 ---
 
-*Every figure and number in this report can be regenerated from this repository:
-`python figures/make_figures.py`.*
+*The measurements quoted in this report can be reproduced from this repository:
+`python verify_measurements.py`.*
