@@ -14,6 +14,12 @@
 
 <p align="center"><strong>Google Summer of Code 2026 - final report</strong></p>
 
+<p align="center">
+  <a href="https://prajwal-tech07.github.io/gsoc-2026-flexible-graph-construction/">Read as a page</a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/prajwal-tech07/gsoc-2026-flexible-graph-construction">Source on GitHub</a>
+</p>
+
 | | |
 | :--- | :--- |
 | **Contributor** | Prajwal Hawaldar ([@prajwal-tech07](https://github.com/prajwal-tech07)) |
