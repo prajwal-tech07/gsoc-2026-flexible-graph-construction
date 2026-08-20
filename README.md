@@ -23,12 +23,17 @@ The goal was to make mesh construction topology-agnostic across the two
 repositories that MLLAM maintains: `weather-model-graphs`, which builds and
 stores graphs, and `neural-lam`, which trains models on them.
 
-Over the summer I opened **9 pull requests and 15 issues** across both repos.
-Three PRs are merged and shipped, five are open and under review, and the work
-splits into four strands: separating mesh geometry from mesh connectivity,
-connecting the two repositories so they share one graph format, adding automated
-performance regression checking to CI, and migrating `neural-lam` onto
-PyTorch Geometric's `HeteroData`.
+I opened **9 pull requests and 15 issues** across both repos. Three PRs are merged
+and shipped, five are open and under review, and the work splits into four
+strands: separating mesh geometry from mesh connectivity, connecting the two
+repositories so they share one graph format, adding automated performance
+regression checking to CI, and migrating `neural-lam` onto PyTorch Geometric's
+`HeteroData`.
+
+Most of it began as a written design proposal rather than as code. I opened the
+architecture issues, argued for an API, revised it in discussion with the
+maintainers, and started implementing once the design was agreed. The section
+[below](#designing-before-building) traces that path from issue to merged PR.
 
 ### Contributions
 
@@ -70,6 +75,51 @@ called `networkx.grid_2d_graph` in two places, so a rectangular mesh was not a
 default that could be changed, it was an assumption baked into the file. Any
 irregular or non-rectangular data source was blocked by it, and every improvement
 to graph construction had to be made twice.
+
+---
+
+## Designing before building
+
+The architecture in this project was not handed to me as a specification. I
+proposed it, and the proposals came before the code.
+
+| Proposed | Issue | Became |
+| :--- | :--- | :--- |
+| 2026-02-25 | [wmg#68](https://github.com/mllam/weather-model-graphs/issues/68) grid-node area weights | open |
+| 2026-02-26 | [wmg#69](https://github.com/mllam/weather-model-graphs/issues/69) logic bug in CRS handling | fixed, closed |
+| 2026-02-26 | [wmg#71](https://github.com/mllam/weather-model-graphs/issues/71) decouple topology from connectivity | revised into #78 |
+| 2026-03-01 | [wmg#78](https://github.com/mllam/weather-model-graphs/issues/78) introduce `mesh_layout` | [PR #81](https://github.com/mllam/weather-model-graphs/pull/81), merged |
+| 2026-03-01 | [wmg#80](https://github.com/mllam/weather-model-graphs/issues/80) triangular layout | [PR #92](https://github.com/mllam/weather-model-graphs/pull/92) |
+| 2026-03-01 | [wmg#79](https://github.com/mllam/weather-model-graphs/issues/79) prebuilt layout | [PR #91](https://github.com/mllam/weather-model-graphs/pull/91) |
+| 2026-06-26 | [wmg#144](https://github.com/mllam/weather-model-graphs/issues/144) CI benchmark regression | [PR #147](https://github.com/mllam/weather-model-graphs/pull/147), merged |
+
+The `mesh_layout` design is the clearest example of the pattern, and also of the
+fact that the first version was not the right one. I opened
+[#71](https://github.com/mllam/weather-model-graphs/issues/71) in February
+arguing that mesh topology and mesh connectivity should be separated. It was
+closed, because the design needed reworking, and I reopened the argument in a
+tighter form as [#78](https://github.com/mllam/weather-model-graphs/issues/78).
+
+What followed was a long design discussion covering the call signatures for all
+three graph archetypes, what belonged in `mesh_layout_kwargs` against
+`m2m_connectivity_kwargs`, and how coordinate creation should pass its implied
+adjacency knowledge downstream so the connectivity step does not have to rederive
+it. Several of my own suggestions were corrected in that thread. The API we
+converged on there is, with small changes, the one that shipped in v0.4.0.
+[PR #81](https://github.com/mllam/weather-model-graphs/pull/81) was opened the day
+after that agreement.
+
+The same shape repeats elsewhere. The CI benchmark check began as
+[#144](https://github.com/mllam/weather-model-graphs/issues/144), a written
+argument for same-runner A/B measurement, and was implemented only after the
+approach was agreed. The dependency and specification issues
+([#149](https://github.com/mllam/weather-model-graphs/issues/149),
+[neural-lam#714](https://github.com/mllam/neural-lam/issues/714)) came out of
+questions raised during review of my own PRs.
+
+The practical effect is that by the time I wrote code, the hard decisions had
+already been argued out in public, and review was about implementation rather than
+about direction.
 
 ---
 
@@ -307,6 +357,20 @@ it may as well not have been.
 **Reviewers repeat themselves for a reason.** When a mentor writes "I still
 think", the previous answer did not land. Reading that as a signal rather than as
 a repetition saved a round trip more than once.
+
+**Designing in the open is a separate skill from writing the code.** This is the
+part of the project I came in weakest at and improved at most. Writing
+[#78](https://github.com/mllam/weather-model-graphs/issues/78) forced me to say
+what the boundary between two concepts actually was, in a form other people could
+disagree with, before I had any implementation to hide behind. My first attempt at
+that argument was closed and needed rewriting. The discussion that followed
+changed the design again, several times, and the result was better than what I
+proposed.
+
+I started this project able to implement a design and finished it able to propose
+one, defend it, and be argued out of the parts that were wrong. Working on a
+codebase that real forecasting work depends on is what taught me the difference
+between code that runs and code that other people can build on.
 
 ---
 
