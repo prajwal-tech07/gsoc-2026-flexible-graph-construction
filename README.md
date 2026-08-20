@@ -32,26 +32,26 @@
 
 ## Summary
 
-Graph-based weather models learn on a mesh. Before this project, the tooling that
-builds those meshes assumed the mesh was a regular rectangular lattice, and that
-assumption was hardcoded in enough places that no other topology could be used
-without rewriting the pipeline.
+Graph-based weather models operate on a mesh. Before this project, the tooling
+that builds those meshes assumed a regular rectangular lattice, and that
+assumption was written into enough places that using any other topology would have
+required rewriting the pipeline.
 
-The goal was to make mesh construction topology-agnostic across the two
-repositories that MLLAM maintains: `weather-model-graphs`, which builds and
-stores graphs, and `neural-lam`, which trains models on them.
+The aim of the project was to make mesh construction independent of topology
+across the two repositories that MLLAM maintains: `weather-model-graphs`, which
+builds and stores graphs, and `neural-lam`, which trains models on them.
 
-I opened **10 pull requests and 15 issues** across both repos. Three PRs are
-merged and shipped, six are open and under review, and the work splits into four
-strands: separating mesh geometry from mesh connectivity, connecting the two
-repositories so they share one graph format, adding automated performance
-regression checking to CI, and migrating `neural-lam` onto PyTorch Geometric's
-`HeteroData`.
+I opened 10 pull requests and 15 issues across the two repositories. Three pull
+requests are merged and released, and six remain open and under review. The work
+falls into four areas: separating mesh geometry from mesh connectivity, giving the
+two repositories a shared graph format, adding performance regression checking to
+CI, and moving `neural-lam` onto PyTorch Geometric's `HeteroData`.
 
-Most of it began as a written design proposal rather than as code. I opened the
-architecture issues, argued for an API, revised it in discussion with the
-maintainers, and started implementing once the design was agreed. The section
-[below](#designing-before-building) traces that path from issue to merged PR.
+Much of the work began as a written design proposal rather than as code. I opened
+the architecture issues, proposed an API, revised it in discussion with the
+maintainers, and began implementing once the design had been agreed. The section
+on [design proposals](#design-proposals) traces that path from issue to merged
+pull request.
 
 ### Contributions
 
@@ -67,7 +67,7 @@ maintainers, and started implementing once the design was agreed. The section
 | [#711](https://github.com/mllam/neural-lam/pull/711) | neural-lam | Load flat graphs into `pyg.HeteroData` | Open, changes requested |
 | [#713](https://github.com/mllam/neural-lam/pull/713) | neural-lam | Hierarchical graphs in `HeteroData` | Open, stacked on #711 |
 
-Issues opened along the way include
+Issues opened during the project include
 [#144](https://github.com/mllam/weather-model-graphs/issues/144) (CI benchmarking),
 [#149](https://github.com/mllam/weather-model-graphs/issues/149) (dependency floor),
 [#661](https://github.com/mllam/neural-lam/issues/661) and
@@ -78,29 +78,31 @@ Issues opened along the way include
 ## The problem
 
 `neural-lam` uses an encode-process-decode architecture. Grid points carrying the
-weather state are encoded onto a coarser mesh (`g2m`), message passing happens on
-the mesh (`m2m`), and the result is decoded back to the grid (`m2g`). The mesh is
-the thing the model actually computes on, so how you build it matters.
+weather state are encoded onto a coarser mesh (`g2m`), message passing takes place
+on the mesh (`m2m`), and the result is decoded back to the grid (`m2g`). The model
+computes on the mesh, so the way the mesh is constructed affects the model
+directly.
 
-Two problems sat underneath this.
+There were two underlying problems.
 
-First, `weather-model-graphs` built mesh coordinates and mesh connectivity in the
-same step. You could not ask for "the same connectivity rules, but on a different
-node layout", because the layout was not a separate concept.
+First, `weather-model-graphs` created mesh coordinates and mesh connectivity in a
+single step. It was not possible to apply the same connectivity rules to a
+different node layout, because the layout was not represented as a separate
+concept.
 
-Second, `neural-lam` had its own graph builder, `neural_lam/create_graph.py`, 963
-lines long, duplicating logic that already existed in `weather-model-graphs`. It
-called `networkx.grid_2d_graph` in two places, so a rectangular mesh was not a
-default that could be changed, it was an assumption baked into the file. Any
-irregular or non-rectangular data source was blocked by it, and every improvement
-to graph construction had to be made twice.
+Second, `neural-lam` contained its own graph builder,
+`neural_lam/create_graph.py`, 963 lines long, which duplicated logic that already
+existed in `weather-model-graphs`. It called `networkx.grid_2d_graph` in two
+places, so a rectangular mesh was not a configurable default but an assumption
+written into the file. Irregular and non-rectangular data sources were blocked by
+it, and any improvement to graph construction had to be made in both repositories.
 
 ---
 
-## Designing before building
+## Design proposals
 
-The architecture in this project was not handed to me as a specification. I
-proposed it, and the proposals came before the code.
+The architecture was not given to me as a specification. I proposed it, and the
+proposals preceded the code.
 
 | Proposed | Issue | Became |
 | :--- | :--- | :--- |
@@ -112,299 +114,287 @@ proposed it, and the proposals came before the code.
 | 2026-03-01 | [wmg#79](https://github.com/mllam/weather-model-graphs/issues/79) prebuilt layout | [PR #91](https://github.com/mllam/weather-model-graphs/pull/91) |
 | 2026-06-26 | [wmg#144](https://github.com/mllam/weather-model-graphs/issues/144) CI benchmark regression | [PR #147](https://github.com/mllam/weather-model-graphs/pull/147), merged |
 
-The `mesh_layout` design is the clearest example of the pattern, and also of the
-fact that the first version was not the right one. I opened
-[#71](https://github.com/mllam/weather-model-graphs/issues/71) in February
+The `mesh_layout` design is the clearest example, including the fact that my first
+version was not the right one. I opened
+[#71](https://github.com/mllam/weather-model-graphs/issues/71) in February,
 arguing that mesh topology and mesh connectivity should be separated. It was
-closed, because the design needed reworking, and I reopened the argument in a
+closed because the design needed reworking, and I put the argument again in a
 tighter form as [#78](https://github.com/mllam/weather-model-graphs/issues/78).
 
-What followed was a long design discussion covering the call signatures for all
-three graph archetypes, what belonged in `mesh_layout_kwargs` against
-`m2m_connectivity_kwargs`, and how coordinate creation should pass its implied
-adjacency knowledge downstream so the connectivity step does not have to rederive
-it. Several of my own suggestions were corrected in that thread. The API we
-converged on there is, with small changes, the one that shipped in v0.4.0.
-[PR #81](https://github.com/mllam/weather-model-graphs/pull/81) was opened the day
-after that agreement.
+The discussion that followed covered the call signatures for all three graph
+archetypes, which arguments belonged in `mesh_layout_kwargs` rather than
+`m2m_connectivity_kwargs`, and how the coordinate creation step should pass its
+implied adjacency information downstream so that the connectivity step does not
+have to derive it again. Several of my own suggestions were corrected during that
+discussion. The API agreed there is, with minor changes, the one released in
+v0.4.0. [PR #81](https://github.com/mllam/weather-model-graphs/pull/81) was opened
+the day after the design was agreed.
 
-The same shape repeats elsewhere. The CI benchmark check began as
-[#144](https://github.com/mllam/weather-model-graphs/issues/144), a written
-argument for same-runner A/B measurement, and was implemented only after the
-approach was agreed. The dependency and specification issues
+Other parts of the project followed the same sequence. The CI benchmark check
+began as [#144](https://github.com/mllam/weather-model-graphs/issues/144), a
+written argument for same-runner A/B measurement, and was implemented after the
+approach had been agreed. The dependency and specification issues
 ([#149](https://github.com/mllam/weather-model-graphs/issues/149),
-[neural-lam#714](https://github.com/mllam/neural-lam/issues/714)) came out of
-questions raised during review of my own PRs.
+[neural-lam#714](https://github.com/mllam/neural-lam/issues/714)) arose from
+questions raised during review of my own pull requests. In each case the design
+decisions had been settled in public before I began writing code, and review could
+concentrate on the implementation.
 
-The practical effect is that by the time I wrote code, the hard decisions had
-already been argued out in public, and review was about implementation rather than
-about direction.
-
-### Reviewing, and unblocking other people's work
+### Reviewing other contributors' work
 
 The benchmarking work depended on
 [PR #140](https://github.com/mllam/weather-model-graphs/pull/140) by
 [@yuvraajnarula](https://github.com/yuvraajnarula), which added memory profiling
-and JSON output to the scaling benchmark. Two things came out of reviewing it.
+and JSON output to the scaling benchmark. Reviewing it produced two results.
 
-First, a scheduling problem. #140 and
-[#117](https://github.com/mllam/weather-model-graphs/pull/117) were both adding
-the same `tests/benchmarks/` directory from the same base commit, so whichever
-merged second would conflict, and #140 was effectively a superset of #117. I
-raised this on #144 and proposed resolving it rather than letting the two
-collide. The outcome was that #117 was closed and #140 replaced it on the v0.4.0
-roadmap.
+The first concerned scheduling. #140 and
+[#117](https://github.com/mllam/weather-model-graphs/pull/117) both added the same
+`tests/benchmarks/` directory from the same base commit, so whichever merged
+second would conflict, and #140 was effectively a superset of #117. I raised this
+on #144 and proposed a resolution rather than allowing the two to collide. #117
+was closed and #140 replaced it on the v0.4.0 roadmap.
 
-Second, a real bug. On review I found that `--output-plot-memory` produced no
-file at all: `output_path` was passed into both plot functions but never used,
+The second was a defect. During review I found that `--output-plot-memory` did not
+produce a file: `output_path` was passed into both plot functions but never used,
 and the only `savefig` call targeted the runtime plot, so running with
-`--track-memory --output-plot-memory` wrote the memory plot on top of the runtime
-one. It was fixed before the PR merged.
-
-I also confirmed the JSON schema was what the CI check would consume before
-depending on it, which is the cheapest possible time to find out that it is not.
+`--track-memory --output-plot-memory` wrote the memory plot over the runtime one.
+This was fixed before the pull request merged. I also confirmed that the JSON
+schema matched what the CI check would consume before building on it.
 
 ---
 
 ## Separating layout from connectivity
 
 [PR #81](https://github.com/mllam/weather-model-graphs/pull/81) introduced a
-`mesh_layout` argument and split mesh construction into two independent steps:
+`mesh_layout` argument and divided mesh construction into two independent steps.
+Coordinate creation determines where mesh nodes are placed, and connectivity
+creation determines which nodes are joined, given those positions.
 
-1. **Coordinate creation** decides where mesh nodes go.
-2. **Connectivity creation** decides which nodes are joined, given those positions.
+Each layout is a module exposing the same interface, so adding a topology requires
+adding one file rather than modifying the pipeline, and the connectivity code no
+longer depends on how the coordinates were produced.
 
-Each layout is a module exposing the same interface, so adding a new topology
-means adding one file rather than touching the pipeline. Connectivity code no
-longer knows or cares how the coordinates were produced.
-
-This is the piece everything else stands on. It shipped in v0.4.0 and both the
-triangular ([#92](https://github.com/mllam/weather-model-graphs/pull/92)) and
-prebuilt ([#91](https://github.com/mllam/weather-model-graphs/pull/91)) layouts
-are built on top of it.
+The remainder of the project builds on this change. It was released in v0.4.0, and
+both the triangular ([#92](https://github.com/mllam/weather-model-graphs/pull/92))
+and prebuilt ([#91](https://github.com/mllam/weather-model-graphs/pull/91))
+layouts are implemented on top of it.
 
 ---
 
-## One graph format, two repositories
+## A shared graph format
 
-With layout pluggable, the next problem was that the two repositories could not
-exchange graphs.
+With the layout made pluggable, the next problem was that the two repositories
+could not exchange graphs.
 
 [PR #123](https://github.com/mllam/weather-model-graphs/pull/123) added
 `wmg.save.to_torch_tensors_on_disk`, which writes a graph in the on-disk tensor
-format `neural-lam` reads, following the graph storage specification the
-community agreed on. It shipped in v0.4.0 (released 2026-07-28).
+format `neural-lam` reads, following the graph storage specification agreed by the
+community. It was released in v0.4.0 on 2026-07-28.
 
-[PR #596](https://github.com/mllam/neural-lam/pull/596) is the other half:
-a `create_graph_with_wmg` CLI that builds a graph from a datastore using
-`weather-model-graphs` and writes it out in that format, replacing the 963-line
-duplicate with **215 lines**. The old entry point still works and emits a
-deprecation warning.
+[PR #596](https://github.com/mllam/neural-lam/pull/596) is the corresponding
+change in `neural-lam`: a `create_graph_with_wmg` CLI that builds a graph from a
+datastore using `weather-model-graphs` and writes it in that format, replacing the
+963-line duplicate with 215 lines. The previous entry point still works and emits
+a deprecation warning.
 
-This PR took the longest to get right, and most of that was review rather than
-code. Working through it produced several things worth recording:
+This pull request took the longest to complete, and most of that time was spent in
+review rather than in writing code. Three results are worth recording.
 
-- The estimator for grid node distance is `sqrt(x_range * y_range / N)`. Because
-  `np.ptp` measures `n-1` intervals across `n` points, it is biased low by
-  `sqrt((nx-1)(ny-1) / (nx * ny))`: about 0.2% at 500x500, but 10% at 10x10.
-- Terminology was inconsistent between "spacing", "distance" and "resolution".
-  We standardised on "distance", to match `weather-model-graphs`. That surfaced a
-  genuine bug: `mesh_node_distance = grid_distance * ratio` means the ratio is
-  mesh-to-grid, but the argument was named grid-to-mesh, the wrong way round. It
-  was renamed before the CLI ever shipped in a release, so no deprecation path
-  was needed.
-- On my mentor's suggestion the hand-written assertions in the tests were removed
-  in favour of the shared graph validator. Before deleting a check that had come
-  from another contributor's PR, I corrupted a valid graph six different ways and
-  confirmed the validator caught each one. It also turned out the manual check
-  pinned edge features to exactly 3 dimensions, while the specification allows 3
-  or 4, so removing it fixed a latent disagreement with the spec.
+The estimator for grid node distance is `sqrt(x_range * y_range / N)`. Because
+`np.ptp` measures `n-1` intervals across `n` points, the estimate is biased low by
+a factor of `sqrt((nx-1)(ny-1) / (nx * ny))`, which is approximately 0.2% at
+500x500 and 10% at 10x10.
+
+Terminology was inconsistent between "spacing", "distance" and "resolution", and
+we standardised on "distance" to match `weather-model-graphs`. Doing so exposed a
+defect. Since `mesh_node_distance = grid_distance * ratio`, the ratio is
+mesh-to-grid, but the argument had been named grid-to-mesh. It was renamed before
+the CLI appeared in a release, so no deprecation path was required.
+
+On my mentor's suggestion, the hand-written assertions in the tests were replaced
+by the shared graph validator. Before removing a check that had come from another
+contributor's pull request, I corrupted a valid graph in six different ways and
+confirmed that the validator caught each one. The manual check had also pinned
+edge features to exactly three dimensions where the specification allows three or
+four, so removing it corrected a disagreement with the specification.
 
 ---
 
-## Catching performance regressions in CI
+## Performance regression checking in CI
 
-Graph construction is the slow part of the pipeline, and nothing was watching it
-for regressions. I opened
+Graph construction is the slowest part of the pipeline, and there was no check on
+it for regressions. I opened
 [issue #144](https://github.com/mllam/weather-model-graphs/issues/144) proposing a
-CI check, and implemented it in
-[PR #147](https://github.com/mllam/weather-model-graphs/pull/147), merged on
+CI check and implemented it in
+[PR #147](https://github.com/mllam/weather-model-graphs/pull/147), which merged on
 2026-08-17.
 
-The design question was how to measure a slowdown on shared CI runners, where
-absolute timings are meaningless because hardware varies between jobs. The answer
-was to stop comparing against recorded numbers:
+The difficulty is measuring a slowdown on shared CI runners, where absolute
+timings cannot be compared because the hardware varies between jobs. The approach
+taken avoids comparing against previously recorded numbers:
 
-- Run the benchmark for the PR and for its base branch **back to back in the same
-  job on the same runner**, so both sides see the same hardware and the noise
-  largely cancels.
-- Swap **only the library** between the two runs, keeping the benchmark harness
-  fixed at the PR's version. Checking out the base branch would swap the harness
-  too, and you would be measuring with two different rulers.
-- Compare **relative percentages**, not seconds, and post the result as a sticky
-  PR comment.
+- The benchmark runs for the pull request and for its base branch back to back
+  within the same job, on the same runner, so that both measurements see the same
+  hardware and most of the variation cancels.
+- Only the library is swapped between the two runs, with the benchmark harness
+  held at the pull request's version. Checking out the base branch would replace
+  the harness as well, and the two sides would then be measured differently.
+- The comparison is expressed in relative percentages rather than seconds, and
+  posted as a sticky pull request comment.
 
-The check is informational rather than blocking, and reports peak memory
-alongside runtime. The threshold is deliberately set very low (0.1%) so that it
-can be raised against real observed noise rather than guessed at up front.
+The check is informational rather than blocking, and reports peak memory alongside
+runtime. The threshold is set very low, at 0.1%, so that it can be raised against
+observed noise rather than estimated in advance.
 
 ### Phase 2: repeated timings and the median
 
 [PR #150](https://github.com/mllam/weather-model-graphs/pull/150) is the second
-half. A single timing sample per grid size turned out to be noisy enough that
-unchanged code could look slower, so it adds a `--repetitions` option and reports
-the median instead. CI runs 5 repetitions.
+part. A single timing sample per grid size proved noisy enough that unchanged code
+could appear slower, so it adds a `--repetitions` option and reports the median.
+CI runs five repetitions.
 
-Only the timed runs repeat. Peak memory is still measured once, for two reasons:
-the run-to-run spread for a given input is under 0.01%, and `tracemalloc` makes
-graph creation roughly 5x slower, so repeating it would have cost job time for no
-information.
+Only the timed runs are repeated. Peak memory is measured once, for two reasons:
+the run-to-run spread for a given input is below 0.01%, and `tracemalloc` makes
+graph creation roughly five times slower, so repeating it would have increased job
+time without adding information.
 
-Separating the two exposed something I had not noticed. Because memory tracking
-had been active during the timed runs, **every runtime we had reported was
-inflated by it**. With `tracemalloc` kept out of the timed path, the largest grid
-size drops from about 17.5s to about 3.6s. The benchmark had been partly
-measuring its own instrumentation.
+Separating the two revealed a problem I had not previously noticed. Because memory
+tracking had been active during the timed runs, the runtimes reported until then
+included the cost of measurement. With `tracemalloc` excluded from the timed path,
+the largest grid size falls from approximately 17.5s to approximately 3.6s.
 
-I also left the 0.1% threshold alone rather than setting it from local
-measurements. Trying to find the noise floor on a laptop gave anywhere from 3% to
-47% between two runs of identical code, depending on grid size and how warm the
-machine was, which is not a fair proxy for a CI runner. #150 happens to be a clean
-experiment for this: it changes nothing under `src/`, so both sides of its own A/B
-comparison run identical library code, and whatever the benchmark comment reports
-on that PR is close to pure runner noise at 5 repetitions on real hardware. That
-is a much better basis for choosing the threshold than my machine, and the plan is
-to set it from that number.
+I also left the 0.1% threshold unchanged rather than setting it from local
+measurements. Attempting to establish the noise floor on a laptop produced results
+between 3% and 47% for two runs of identical code, varying with grid size and with
+how warm the machine was, which is not a reasonable proxy for a CI runner. #150 is
+a useful experiment in this respect, because it changes nothing under `src/`. Both
+sides of its own comparison therefore run identical library code, and the
+benchmark comment on that pull request reports close to pure runner noise at five
+repetitions on real hardware. That provides a better basis for choosing the
+threshold, and the intention is to set it from that figure.
 
 ---
 
-## Making triangular meshes actually equilateral
+## Triangular mesh layout
 
-A triangular mesh is worth having because each interior node has 6 equidistant
-neighbours instead of 8 neighbours at two different distances, which makes
-message passing more isotropic. That argument only holds if the triangles really
-are equilateral.
+A triangular mesh is useful because each interior node has six equidistant
+neighbours, rather than eight neighbours at two different distances, which makes
+message passing more isotropic. That property depends on the triangles being
+equilateral, and they were not.
 
-They were not. `networkx.triangular_lattice_graph` produces a unit-edge lattice,
-but the lattice was then scaled to fill the domain independently in x and y.
-Stretching one axis more than the other turns equilateral triangles into isosceles
-ones. On a square domain the longest edge came out about 36% longer than the
-shortest, and on a 200 x 60 domain it was nearly double, so the equidistant
-neighbours the layout exists to provide were not there at all. Scaling by a single
-factor in both directions fixes it, and every edge then comes out exactly equal.
+`networkx.triangular_lattice_graph` produces a lattice with unit edge length, but
+the lattice was then scaled to fill the domain independently in x and y.
+Stretching one axis more than the other converts equilateral triangles into
+isosceles ones. On a square domain the longest edge was approximately 36% longer
+than the shortest, and on a 200 x 60 domain it was almost twice as long, so the
+property the layout exists to provide was absent. Scaling by a single factor in
+both directions corrects this, and all edges are then of equal length.
 
-Fixing the scaling exposed a second, quieter problem. Multiscale graphs are built
-by generating several lattices at different resolutions and merging them, and the
-merge works by coincident position: a coarse node and a fine node at the same
-coordinates become one node, and that is what ties the levels together. Because
-each level had been scaled independently to fit the domain, coarse nodes almost
-never landed exactly on fine ones, so nothing merged. `flat_multiscale` with a
-triangular layout was returning three disconnected components, one per level,
-instead of one connected graph. No test caught it, because the tests checked node
-and edge counts and those were all correct.
+Correcting the scaling exposed a second problem. Multiscale graphs are built by
+generating several lattices at different resolutions and merging them, and the
+merge operates on coincident position: a coarse node and a fine node at the same
+coordinates become a single node, which is what connects the levels. Because each
+level had been scaled independently to fit the domain, coarse nodes rarely landed
+exactly on fine ones, and no merging took place. `flat_multiscale` with a
+triangular layout returned three disconnected components, one per level, rather
+than one connected graph. The existing tests did not detect this, because they
+checked node and edge counts, and those counts were correct.
 
-Anchoring every level to a shared origin fixed it, and the regression test now
-asserts the component count directly rather than the size of the output.
+Anchoring every level to a shared origin corrected the problem, and the regression
+test now asserts the number of connected components rather than the size of the
+output.
 
 ---
 
 ## Migrating to HeteroData
 
 `neural-lam` represents a loaded graph as a dictionary of 11 keys. PyTorch
-Geometric's `HeteroData` is a better fit: it is built for graphs with several node
-and edge types, which is exactly what a grid/mesh graph is.
+Geometric's `HeteroData` is better suited to this, as it is designed for graphs
+with several node and edge types, which is what a grid and mesh graph is.
 
 [PR #711](https://github.com/mllam/neural-lam/pull/711) loads flat graphs into
-`HeteroData` and wires it into `BaseGraphModel`;
-[#713](https://github.com/mllam/neural-lam/pull/713) extends it to hierarchical
-graphs. Both are open with CI green.
+`HeteroData` and connects it to `BaseGraphModel`, and
+[#713](https://github.com/mllam/neural-lam/pull/713) extends this to hierarchical
+graphs. Both are open with CI passing.
 
-A review from [@Sir-Sloth-The-Lazy](https://github.com/Sir-Sloth-The-Lazy) on #711
-found two real bugs I had initially argued were not bugs, and was right on both
-counts: the feature flag was unreachable from several
-model classes, and storing a `HeteroData` object via `setattr` escapes
-`nn.Module._apply`, so the graph stayed on the CPU after `.cuda()`. Both are
-fixed, the second by rebuilding the view on access rather than storing it.
+A review by [@Sir-Sloth-The-Lazy](https://github.com/Sir-Sloth-The-Lazy) on #711
+identified two defects that I had initially argued were not defects, and the
+review was correct on both. The feature flag was unreachable from several model
+classes, and storing a `HeteroData` object by attribute assignment bypasses
+`nn.Module._apply`, so the graph remained on the CPU after `.cuda()`. Both have
+been fixed, the second by rebuilding the view on access rather than storing it.
 
-My mentor has since asked for a more ambitious version: drop the dual code path
-entirely, remove the graph dictionary from `neural-lam` altogether, and hold graph
-state in a dedicated module instead of assigning attributes onto the model. That
-is the current state of this strand, and it is the main piece of unfinished work.
+My mentor has since asked for a more thorough version of this change: removing the
+dual code path, removing the graph dictionary from `neural-lam` entirely, and
+holding graph state in a dedicated module rather than assigning attributes onto
+the model. This is the current state of the work and the main outstanding item.
 
 ---
 
-## Where things stand
+## Current status
 
-**Merged and shipped:** the two-step mesh layout architecture (#81), the shared
-graph writer (#123), and the CI benchmark regression check (#147). The first two
-are in the released v0.4.0.
+Merged and released: the two-step mesh layout architecture (#81), the shared graph
+writer (#123), and the CI benchmark regression check (#147). The first two are
+included in v0.4.0.
 
-**Open and close:** #596 has all review feedback addressed, CI green, and is
-waiting on final approval. #92 has an equilateral-triangle fix pushed and two
-small review points outstanding.
+Open and close to merging: #596, which has all review feedback addressed and CI
+passing, and is awaiting final approval; and #92, which has the
+equilateral-triangle fix pushed and two minor review points outstanding.
 
-**Open and further out:** #91 (prebuilt meshes), the `HeteroData` migration in
-#711 and #713, which needs reworking toward the HeteroData-only design, and
-[#150](https://github.com/mllam/weather-model-graphs/pull/150), which is CI green
-and waiting on the threshold decision described above.
+Open and less advanced: #91 (prebuilt meshes); the `HeteroData` migration in #711
+and #713, which requires reworking towards the HeteroData-only design; and
+[#150](https://github.com/mllam/weather-model-graphs/pull/150), which has CI
+passing and is waiting on the threshold decision described above.
 
-**Left for whoever picks this up next:** the `--mesh_layout` CLI flag in
+Remaining for a future contributor: the `--mesh_layout` CLI flag in
 [#661](https://github.com/mllam/neural-lam/issues/661), which is written and
-waiting for #596 to land, and relaxing the `torch-geometric` floor
+waiting for #596 to merge, and relaxing the `torch-geometric` minimum version
 ([#149](https://github.com/mllam/weather-model-graphs/issues/149)).
 
-Not reached: the stretch work in the proposal on graph quality metrics,
-density-adaptive meshes and adaptive mesh refinement. The layout abstraction from
-#81 is the hook those would attach to.
+Not reached: the stretch work described in the proposal on graph quality metrics,
+density-adaptive meshes and adaptive mesh refinement. The layout abstraction
+introduced in #81 is the point at which those would attach.
 
 ---
 
 ## What I learned
 
-Two of the bugs I ran into this summer had the same shape, and I did not notice
-that until fairly late.
+Two of the defects I encountered during the project had the same underlying
+character, which I only recognised late.
 
-The disconnected-components bug got through a full test suite because every
-number it checked was correct. The graph had the expected node count and the
-expected edge count. It was still three separate pieces where it should have been
-one, and the tests had no opinion about that at all. The benchmark turned out to
-have a version of the same problem: memory tracking was running during the timed
-section, so the runtimes we had been reporting included the cost of measuring
-them. Taking `tracemalloc` out of the timed path dropped the largest grid size
-from about 17.5 seconds to about 3.6. In both cases the thing that was supposed to
-tell me something was wrong was itself the thing that was wrong, and it reported
-success the whole time.
+The disconnected-components problem passed the full test suite because every
+quantity the tests checked was correct. The graph had the expected number of nodes
+and the expected number of edges, but consisted of three separate pieces rather
+than one, and the tests made no assertion about that. The benchmark had a similar
+problem, in that memory tracking ran during the timed section, so the runtimes
+being reported included the cost of measuring them. In both cases the mechanism
+intended to detect a problem was itself producing an incorrect result, and
+reported success throughout.
 
-I was also straightforwardly wrong in review on more than one occasion. On #711 a
-reviewer raised two problems that I initially argued were not problems. They both
-were. The more serious one was that the way I was storing the graph object meant
-it never moved to the GPU with the rest of the model, so training would have
-silently used a stale copy left on the CPU. I would have shipped that. What stuck
-with me is less the specific bug than what it cost to be talked out of it, and
-that noticing when a reviewer restates a point is usually cheaper than defending
-the first answer.
+I was also wrong in review on more than one occasion. On #711 a reviewer raised
+two problems that I initially argued were not problems, and both were genuine. The
+more serious was that the way I stored the graph object meant it was never moved
+to the GPU with the rest of the model, so training would have used a stale copy on
+the CPU without any error being raised. What I took from this is that when a
+reviewer restates a point, re-reading it is usually more productive than defending
+the original answer.
 
-The part of the work I was weakest at coming in was the design itself. Writing
-[#78](https://github.com/mllam/weather-model-graphs/issues/78) meant stating where
-the boundary between two concepts actually sat, in a form other people could
-disagree with, with no implementation yet to point at. My first attempt at that
-argument was closed and had to be rewritten, and the discussion that followed
-changed the design several more times. The version that shipped is not the version
-I proposed, and it is better for that.
+The area I was weakest in at the start was design. Writing
+[#78](https://github.com/mllam/weather-model-graphs/issues/78) required stating
+where the boundary between two concepts lay, in a form that others could disagree
+with, before there was any implementation to refer to. My first attempt was closed
+and had to be rewritten, and the subsequent discussion changed the design further.
+The version released is not the version I proposed.
 
-I came into this able to implement a design and came out able to propose one,
-argue for it, and give up the parts of it that were wrong. Working on a codebase
-that real forecasting work depends on is what taught me the difference between
-code that runs and code other people can build on.
+I began the project able to implement a design and finished it able to propose
+one, argue for it, and revise the parts that were wrong. Working on a codebase
+used for real forecasting work is what taught me that difference.
 
 ---
 
 ## Acknowledgements
 
-Thanks to **Leif Denby** for detailed and patient review across both repositories
-throughout the summer, and to **Hauke Schulz** and **Joel Oskarsson** for
-mentorship and design discussion. Thanks also to the wider MLLAM community for
-reviews and for the surrounding work this project depended on.
-
----
-
+I would like to thank Leif Denby for detailed and patient review across both
+repositories throughout the summer, and Hauke Schulz and Joel Oskarsson for their
+mentorship and design discussion. I am also grateful to the wider MLLAM community
+for their reviews and for the surrounding work this project depended on.
