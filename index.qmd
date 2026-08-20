@@ -29,8 +29,8 @@ The goal was to make mesh construction topology-agnostic across the two
 repositories that MLLAM maintains: `weather-model-graphs`, which builds and
 stores graphs, and `neural-lam`, which trains models on them.
 
-I opened **9 pull requests and 15 issues** across both repos. Three PRs are merged
-and shipped, five are open and under review, and the work splits into four
+I opened **10 pull requests and 15 issues** across both repos. Three PRs are
+merged and shipped, six are open and under review, and the work splits into four
 strands: separating mesh geometry from mesh connectivity, connecting the two
 repositories so they share one graph format, adding automated performance
 regression checking to CI, and migrating `neural-lam` onto PyTorch Geometric's
@@ -47,7 +47,8 @@ maintainers, and started implementing once the design was agreed. The section
 | :--- | :--- | :--- | :--- |
 | [#81](https://github.com/mllam/weather-model-graphs/pull/81) | wmg | `mesh_layout` argument, two-step coordinate/connectivity split | **Merged**, in v0.4.0 |
 | [#123](https://github.com/mllam/weather-model-graphs/pull/123) | wmg | `to_torch_tensors_on_disk`, writes the shared graph format | **Merged**, in v0.4.0 |
-| [#147](https://github.com/mllam/weather-model-graphs/pull/147) | wmg | Benchmark regression check in CI | **Merged** 2026-08-17 |
+| [#147](https://github.com/mllam/weather-model-graphs/pull/147) | wmg | Benchmark regression check in CI, phase 1 | **Merged** 2026-08-17 |
+| [#150](https://github.com/mllam/weather-model-graphs/pull/150) | wmg | Median of repeated benchmark timings, phase 2 | Open, CI green |
 | [#596](https://github.com/mllam/neural-lam/pull/596) | neural-lam | `create_graph_with_wmg` CLI, replaces the duplicated builder | Open, approved feedback addressed |
 | [#92](https://github.com/mllam/weather-model-graphs/pull/92) | wmg | `mesh_layout="triangular"` | Open, in review |
 | [#91](https://github.com/mllam/weather-model-graphs/pull/91) | wmg | `mesh_layout="prebuilt"` for user-supplied meshes | Open |
@@ -235,9 +236,33 @@ The check is informational rather than blocking, and reports peak memory
 alongside runtime. The threshold is deliberately set very low (0.1%) so that it
 can be raised against real observed noise rather than guessed at up front.
 
-Phase 2, currently in progress, replaces the single timing sample with the median
-of repeated runs. Comparing identical code back to back still shows around 1%
-variation, so a median is needed before the threshold means much.
+### Phase 2: measuring the noise instead of guessing at it
+
+[PR #150](https://github.com/mllam/weather-model-graphs/pull/150) is the second
+half. A single timing sample per grid size turned out to be noisy enough that
+unchanged code could look slower, so it adds a `--repetitions` option and reports
+the median instead. CI runs 5 repetitions.
+
+Only the timed runs repeat. Peak memory is still measured once, for two reasons:
+the run-to-run spread for a given input is under 0.01%, and `tracemalloc` makes
+graph creation roughly 5x slower, so repeating it would have cost job time for no
+information.
+
+Separating the two exposed something I had not noticed. Because memory tracking
+had been active during the timed runs, **every runtime we had reported was
+inflated by it**. With `tracemalloc` kept out of the timed path, the largest grid
+size drops from about 17.5s to about 3.6s. The benchmark had been partly
+measuring its own instrumentation.
+
+I also left the 0.1% threshold alone rather than setting it from local
+measurements. Trying to find the noise floor on a laptop gave anywhere from 3% to
+47% between two runs of identical code, depending on grid size and how warm the
+machine was, which is not a fair proxy for a CI runner. #150 happens to be a clean
+experiment for this: it changes nothing under `src/`, so both sides of its own A/B
+comparison run identical library code, and whatever the benchmark comment reports
+on that PR is close to pure runner noise at 5 repetitions on real hardware. That
+is a much better basis for choosing the threshold than my machine, and the plan is
+to set it from that number.
 
 ---
 
@@ -347,11 +372,12 @@ are in the released v0.4.0.
 waiting on final approval. #92 has an equilateral-triangle fix pushed and two
 small review points outstanding.
 
-**Open and further out:** #91 (prebuilt meshes), and the `HeteroData` migration in
-#711 and #713, which needs reworking toward the HeteroData-only design.
+**Open and further out:** #91 (prebuilt meshes), the `HeteroData` migration in
+#711 and #713, which needs reworking toward the HeteroData-only design, and
+[#150](https://github.com/mllam/weather-model-graphs/pull/150), which is CI green
+and waiting on the threshold decision described above.
 
-**Picked up by someone next:** Phase 2 of #144 (median of repeated benchmark
-runs), the `--mesh_layout` CLI flag in
+**Left for whoever picks this up next:** the `--mesh_layout` CLI flag in
 [#661](https://github.com/mllam/neural-lam/issues/661), which is written and
 waiting for #596 to land, and relaxing the `torch-geometric` floor
 ([#149](https://github.com/mllam/weather-model-graphs/issues/149)).
