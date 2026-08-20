@@ -449,5 +449,3 @@ reviews and for the surrounding work this project depended on.
 
 ---
 
-*The measurements quoted in this report can be reproduced from this repository:
-`python verify_measurements.py`.*
