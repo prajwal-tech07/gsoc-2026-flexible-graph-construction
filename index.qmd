@@ -274,66 +274,25 @@ message passing more isotropic. That argument only holds if the triangles really
 are equilateral.
 
 They were not. `networkx.triangular_lattice_graph` produces a unit-edge lattice,
-but the lattice was then scaled to fill the domain **independently in x and y**.
-Stretching one axis more than the other turns equilateral triangles into
-isosceles ones, and the distortion depends on the shape of the domain:
+but the lattice was then scaled to fill the domain independently in x and y.
+Stretching one axis more than the other turns equilateral triangles into isosceles
+ones. On a square domain the longest edge came out about 36% longer than the
+shortest, and on a 200 x 60 domain it was nearly double, so the equidistant
+neighbours the layout exists to provide were not there at all. Scaling by a single
+factor in both directions fixes it, and every edge then comes out exactly equal.
 
-| Domain | Longest/shortest edge, per-axis scaling | After the fix |
-| :--- | ---: | ---: |
-| 100 x 100 | 1.357 | 1.000000 |
-| 200 x 60 | 1.902 | 1.000000 |
-| 60 x 200 | 1.874 | 1.000000 |
+Fixing the scaling exposed a second, quieter problem. Multiscale graphs are built
+by generating several lattices at different resolutions and merging them, and the
+merge works by coincident position: a coarse node and a fine node at the same
+coordinates become one node, and that is what ties the levels together. Because
+each level had been scaled independently to fit the domain, coarse nodes almost
+never landed exactly on fine ones, so nothing merged. `flat_multiscale` with a
+triangular layout was returning three disconnected components, one per level,
+instead of one connected graph. No test caught it, because the tests checked node
+and edge counts and those were all correct.
 
-Even on a square domain the longest edge was 36% longer than the shortest. On a
-wide domain it was nearly double, so the "equidistant neighbours" property the
-layout exists to provide was simply not there.
-
-The fix is to scale by a **single factor in both directions**. Two behaviours
-follow, depending on which arguments you give:
-
-- With `mesh_node_spacing`, the edge length *is* the requested spacing, and the
-  node counts are chosen to cover the domain. The outermost nodes may sit
-  slightly outside it.
-- With `nx`/`ny`, the counts are fixed and the lattice is scaled to the largest
-  size that still fits inside the domain, so edge length follows from the counts.
-
-The numbers above can be reproduced with `python verify_measurements.py`, which
-needs only `networkx` and `numpy`.
-
-### What the fix uncovered
-
-Fixing the scaling exposed a second, quieter problem.
-
-Multiscale graphs are built by generating several lattices at different
-resolutions and merging them. The merge works **by coincident position**: a
-coarse node and a fine node at the same coordinates become one node, and that is
-what ties the levels together.
-
-Because each level was scaled independently to fit the domain, coarse nodes
-almost never landed exactly on fine ones. Nothing merged. `flat_multiscale` with
-a triangular layout returned **three disconnected components, one per level**,
-instead of a single connected multiscale graph. No test caught this, because the
-tests checked node and edge counts, and the counts were all correct. The graph
-was the right size and the wrong shape.
-
-Anchoring every level to a shared origin, with per-level spacing derived from a
-common base, fixed it. Coincident nodes went from 0 to the expected count and the
-component count went from 3 to 1. The regression test now asserts connectivity
-directly:
-
-```python
-def test_flat_multiscale_is_connected(self, xy_large):
-    """Regression: independently scaled levels never merged, leaving one
-    disconnected component per level instead of a multiscale graph."""
-    components = wmg.create.create_all_graph_components(
-        coords=xy_large,
-        mesh_layout="triangular",
-        mesh_layout_kwargs=dict(mesh_node_spacing=2.0),
-        m2m_connectivity="flat_multiscale",
-        ...
-    )
-    assert nx.number_weakly_connected_components(components["m2m"]) == 1
-```
+Anchoring every level to a shared origin fixed it, and the regression test now
+asserts the component count directly rather than the size of the output.
 
 ---
 
