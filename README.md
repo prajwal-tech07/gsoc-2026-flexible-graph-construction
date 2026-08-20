@@ -249,8 +249,9 @@ and edge types, which is exactly what a grid/mesh graph is.
 [#713](https://github.com/mllam/neural-lam/pull/713) extends it to hierarchical
 graphs. Both are open with CI green.
 
-A community review on #711 found two real bugs I had initially argued were not
-bugs, and was right on both counts: the feature flag was unreachable from several
+A review from [@Sir-Sloth-The-Lazy](https://github.com/Sir-Sloth-The-Lazy) on #711
+found two real bugs I had initially argued were not bugs, and was right on both
+counts: the feature flag was unreachable from several
 model classes, and storing a `HeteroData` object via `setattr` escapes
 `nn.Module._apply`, so the graph stayed on the CPU after `.cuda()`. Both are
 fixed, the second by rebuilding the view on access rather than storing it.
@@ -318,4 +319,5 @@ reviews and for the surrounding work this project depended on.
 
 ---
 
-*This report is also published on the MLLAM community blog.*
+*Every figure and number in this report can be regenerated from this repository:
+`python figures/make_figures.py`.*
